@@ -1,26 +1,31 @@
-import { Component, OnInit, HostBinding } from '@angular/core';
+import { Component, OnInit, HostBinding, inject } from '@angular/core';
 import { mockItems } from './mocks';
 import {
     GanttBarClickEvent,
     GanttViewType,
     GanttDragEvent,
     GanttLoadOnScrollEvent,
-    GanttLineClickEvent,
-    GanttLinkDragEvent,
     GanttItem,
     GanttViewOptions,
     GanttDate,
-    GanttPrintService
+    GanttPrintService,
+    NgxGanttComponent,
+    NgxGanttTableComponent,
+    NgxGanttTableColumnComponent
 } from 'ngx-gantt';
 import { of } from 'rxjs';
 import { delay } from 'rxjs/operators';
+import { DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 @Component({
     selector: 'app-gantt-range-example',
     templateUrl: './gantt-range.component.html',
     providers: [GanttPrintService],
-    standalone: false
+    imports: [NgxGanttComponent, NgxGanttTableComponent, NgxGanttTableColumnComponent, FormsModule, DatePipe]
 })
 export class AppGanttRangeExampleComponent implements OnInit {
+    private printService = inject(GanttPrintService);
+
     items = mockItems;
 
     options = {
@@ -37,7 +42,7 @@ export class AppGanttRangeExampleComponent implements OnInit {
 
     @HostBinding('class.gantt-demo') class = true;
 
-    constructor(private printService: GanttPrintService) {}
+    constructor() {}
 
     ngOnInit(): void {}
 

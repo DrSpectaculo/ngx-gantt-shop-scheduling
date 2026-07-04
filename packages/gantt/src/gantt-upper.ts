@@ -1,151 +1,159 @@
-import {
-    Input,
-    TemplateRef,
-    Output,
-    EventEmitter,
-    ContentChild,
-    ElementRef,
-    HostBinding,
-    ChangeDetectorRef,
-    NgZone,
-    SimpleChanges,
-    InjectionToken,
-    Directive,
-    OnInit,
-    OnDestroy,
-    OnChanges,
-    inject
-} from '@angular/core';
-import { from, Subject } from 'rxjs';
-import { takeUntil, take, skip } from 'rxjs/operators';
-import {
-    GanttItem,
-    GanttGroup,
-    GanttViewType,
-    GanttLoadOnScrollEvent,
-    GanttDragEvent,
-    GanttGroupInternal,
-    GanttItemInternal,
-    GanttBarClickEvent,
-    GanttLinkDragEvent,
-    GanttToolbarOptions
-} from './class';
-import { GanttView, GanttViewOptions } from './views/view';
-import { createViewFactory } from './views/factory';
-import { GanttDate, getUnixTime } from './utils/date';
-import { uniqBy, flatten, recursiveItems, getFlatItems, Dictionary, keyBy } from './utils/helpers';
-import { GanttDragContainer } from './gantt-drag-container';
-import { GanttConfigService, GanttGlobalConfig, GanttStyleOptions, defaultConfig } from './gantt.config';
-import { GanttLinkOptions } from './class/link';
+import { coerceBooleanProperty, coerceCssPixelValue } from '@angular/cdk/coercion';
 import { SelectionModel } from '@angular/cdk/collections';
-import { BooleanInput, coerceBooleanProperty } from '@angular/cdk/coercion';
+import {
+    ChangeDetectorRef,
+    Directive,
+    ElementRef,
+    EventEmitter,
+    HostBinding,
+    InjectionToken,
+    NgZone,
+    OnDestroy,
+    OnInit,
+    Output,
+    OutputEmitterRef,
+    Signal,
+    TemplateRef,
+    afterNextRender,
+    computed,
+    contentChild,
+    effect,
+    inject,
+    input,
+    linkedSignal,
+    model,
+    output,
+    signal,
+    untracked
+} from '@angular/core';
+import { Subject } from 'rxjs';
+import { skip, takeUntil } from 'rxjs/operators';
+import {
+    GanttBarClickEvent,
+    GanttDragEvent,
+    GanttGroup,
+    GanttGroupInternal,
+    GanttItem,
+    GanttItemInternal,
+    GanttLinkDragEvent,
+    GanttLoadOnScrollEvent,
+    GanttToolbarOptions,
+    GanttViewType
+} from './class';
 import { GanttBaselineItem, GanttBaselineItemInternal } from './class/baseline';
+import { GanttLinkOptions } from './class/link';
+import { GanttDragContainer } from './gantt-drag-container';
+import { GANTT_GLOBAL_CONFIG, GanttConfigService, GanttGlobalConfig, GanttStyleOptions } from './gantt.config';
 import { NgxGanttTableComponent } from './table/gantt-table.component';
+import { GanttDate, getUnixTime } from './utils/date';
+import { Dictionary, flatten, getFlatItems, keyBy, recursiveItems, uniqBy } from './utils/helpers';
+import { createView } from './views/factory';
+import { GanttView, GanttViewOptions } from './views/view';
 
 @Directive()
-export abstract class GanttUpper implements OnChanges, OnInit, OnDestroy {
-    // eslint-disable-next-line @angular-eslint/no-input-rename
-    @Input('items') originItems: GanttItem[] = [];
+export abstract class GanttUpper implements OnInit, OnDestroy {
+    protected elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+
+    protected cdr = inject(ChangeDetectorRef);
+
+    protected ngZone = inject(NgZone);
+
+    protected config = inject<GanttGlobalConfig>(GANTT_GLOBAL_CONFIG);
 
     // eslint-disable-next-line @angular-eslint/no-input-rename
-    @Input('groups') originGroups: GanttGroup[] = [];
+    readonly originItems = input<GanttItem[]>([], { alias: 'items' });
 
     // eslint-disable-next-line @angular-eslint/no-input-rename
-    @Input('baselineItems') originBaselineItems: GanttBaselineItem[] = [];
+    readonly originGroups = input<GanttGroup[]>([], { alias: 'groups' });
 
-    @Input() viewType: GanttViewType = GanttViewType.month;
+    // eslint-disable-next-line @angular-eslint/no-input-rename
+    readonly originBaselineItems = input<GanttBaselineItem[]>([], { alias: 'baselineItems' });
 
-    @Input() start: number;
+    readonly viewType = model<GanttViewType>(GanttViewType.month);
 
-    @Input() end: number;
+    readonly start = input<number>();
 
-    @Input() showTodayLine = true;
+    readonly end = input<number>();
 
-    @Input() draggable: boolean;
+    readonly showTodayLine = input(true);
 
-    @Input() styles: GanttStyleOptions;
+    readonly draggable = input<boolean>();
 
-    @Input() showToolbar = false;
+    // eslint-disable-next-line @angular-eslint/no-input-rename
+    readonly originStyles = input<GanttStyleOptions>({}, { alias: 'styles' });
 
-    @Input() toolbarOptions: GanttToolbarOptions = {
+    readonly styles = computed(() => {
+        return this.configService.mergeStyleOptions(this.originStyles());
+    });
+
+    readonly showToolbar = input(false);
+
+    readonly toolbarOptions = input<GanttToolbarOptions>({
         viewTypes: [GanttViewType.day, GanttViewType.month, GanttViewType.year]
-    };
+    });
 
-    @Input() viewOptions: GanttViewOptions = {};
+    readonly viewOptions = input<GanttViewOptions>({});
 
-    @Input() set linkOptions(options: GanttLinkOptions) {
-        this._linkOptions = options;
-    }
+    // eslint-disable-next-line @angular-eslint/no-input-rename
+    readonly inputLinkOptions = input<GanttLinkOptions>({}, { alias: 'linkOptions' });
 
-    get linkOptions() {
-        return Object.assign({}, this.configService.config.linkOptions, this._linkOptions);
-    }
+    readonly linkOptions = computed(() => {
+        return Object.assign({}, this.configService.config.linkOptions, this.inputLinkOptions());
+    });
 
-    @Input() disabledLoadOnScroll: boolean;
+    readonly disabledLoadOnScroll = input<boolean>(true);
 
-    @Input()
-    set selectable(value: BooleanInput) {
-        this._selectable = coerceBooleanProperty(value);
-        if (this._selectable) {
-            this.selectionModel = this.initSelectionModel();
-        } else {
-            this.selectionModel?.clear();
-        }
-    }
+    readonly selectable = input(false, { transform: coerceBooleanProperty });
 
-    get selectable(): boolean {
-        return this._selectable;
-    }
+    readonly multiple = input(false, { transform: coerceBooleanProperty });
 
-    @Input()
-    set multiple(value: BooleanInput) {
-        this._multiple = coerceBooleanProperty(value);
-        if (this.selectable) {
-            this.selectionModel = this.initSelectionModel();
-        }
-    }
+    readonly quickTimeFocus = input(false);
 
-    get multiple(): boolean {
-        return this._multiple;
-    }
+    readonly loadOnScroll = output<GanttLoadOnScrollEvent>();
 
-    @Input() quickTimeFocus = false;
+    readonly dragStarted = output<GanttDragEvent>();
 
-    @Output() loadOnScroll = new EventEmitter<GanttLoadOnScrollEvent>();
+    readonly dragMoved = output<GanttDragEvent>();
 
-    @Output() dragStarted = new EventEmitter<GanttDragEvent>();
+    readonly dragEnded = output<GanttDragEvent>();
 
-    @Output() dragMoved = new EventEmitter<GanttDragEvent>();
+    readonly barClick = output<GanttBarClickEvent>();
 
-    @Output() dragEnded = new EventEmitter<GanttDragEvent>();
+    readonly viewChange = output<GanttView>();
 
-    @Output() barClick = new EventEmitter<GanttBarClickEvent>();
+    readonly expandChange = output<GanttItemInternal | GanttGroupInternal | (GanttItemInternal | GanttGroupInternal)[]>();
 
-    @Output() viewChange = new EventEmitter<GanttView>();
+    readonly barTemplate = contentChild<TemplateRef<any>>('bar');
 
-    @Output() expandChange = new EventEmitter<GanttItemInternal | GanttGroupInternal>();
+    readonly rangeTemplate = contentChild<TemplateRef<any>>('range');
 
-    @ContentChild('bar', { static: true }) barTemplate: TemplateRef<any>;
+    readonly itemTemplate = contentChild<TemplateRef<any>>('item');
 
-    @ContentChild('range', { static: true }) rangeTemplate: TemplateRef<any>;
+    readonly baselineTemplate = contentChild<TemplateRef<any>>('baseline');
 
-    @ContentChild('item', { static: true }) itemTemplate: TemplateRef<any>;
+    readonly groupTemplate = contentChild<TemplateRef<any>>('group');
 
-    @ContentChild('baseline', { static: true }) baselineTemplate: TemplateRef<any>;
+    readonly groupHeaderTemplate = contentChild<TemplateRef<any>>('groupHeader');
 
-    @ContentChild('group', { static: true }) groupTemplate: TemplateRef<any>;
+    readonly toolbarTemplate = contentChild<TemplateRef<any>>('toolbar');
 
-    @ContentChild('groupHeader', { static: true }) groupHeaderTemplate: TemplateRef<any>;
+    readonly disableLoadOnScroll = linkedSignal(() => this.disabledLoadOnScroll());
 
-    @ContentChild('toolbar', { static: true }) toolbarTemplate: TemplateRef<any>;
+    readonly previousViewType = linkedSignal({
+        source: () => this.viewType(),
+        computation: (source, previous) => previous?.source
+    });
+
+    readonly previousViewOptions = linkedSignal({
+        source: () => this.viewOptions(),
+        computation: (source, previous) => previous?.source
+    });
 
     public configService = inject(GanttConfigService);
 
-    public linkable: boolean;
+    public linkable: Signal<boolean> = signal(false);
 
-    public computeAllRefs = true;
-
-    public linkDragEnded = new EventEmitter<GanttLinkDragEvent>();
+    public linkDragEnded?: OutputEmitterRef<GanttLinkDragEvent>;
 
     public view: GanttView;
 
@@ -157,13 +165,9 @@ export abstract class GanttUpper implements OnChanges, OnInit, OnDestroy {
 
     public baselineItemsMap: Dictionary<GanttBaselineItemInternal> = {};
 
-    // public viewChange = new EventEmitter<GanttView>();
-
     public get element() {
         return this.elementRef.nativeElement;
     }
-
-    public firstChange = true;
 
     public dragContainer: GanttDragContainer;
 
@@ -171,40 +175,80 @@ export abstract class GanttUpper implements OnChanges, OnInit, OnDestroy {
 
     public selectionModel: SelectionModel<string>;
 
-    public table?: NgxGanttTableComponent;
+    public table?: Signal<NgxGanttTableComponent>;
 
     private groupsMap: { [key: string]: GanttGroupInternal };
 
-    private _selectable = false;
+    protected isEffectFinished = signal(false);
 
-    private _multiple = false;
-
-    private _linkOptions: GanttLinkOptions;
+    public colors = computed(() => {
+        const styles = this.styles();
+        return styles.themes[styles.defaultTheme] ?? styles.themes.default;
+    });
 
     @HostBinding('class.gantt') ganttClass = true;
 
-    constructor(
-        protected elementRef: ElementRef<HTMLElement>,
-        protected cdr: ChangeDetectorRef,
-        protected ngZone: NgZone, // @Inject(GANTT_GLOBAL_CONFIG) public config: GanttGlobalConfig
-        protected config: GanttGlobalConfig
-    ) {}
+    constructor() {
+        effect(() => {
+            this.initSelectionModel();
+        });
+
+        effect(() => {
+            const viewType = this.viewType();
+            const previousViewType = this.previousViewType();
+            const viewOptions = this.viewOptions();
+            const previousViewOptions = this.previousViewOptions();
+            if (
+                (viewType && previousViewType && viewType !== previousViewType) ||
+                (viewOptions && previousViewOptions && viewOptions !== previousViewOptions)
+            ) {
+                untracked(() => {
+                    this.changeView();
+                });
+            }
+        });
+
+        effect(() => {
+            if (this.originItems() || this.originGroups()) {
+                this.setupExpandedState();
+                this.setupGroups();
+                this.setupItems();
+                this.computeRefs();
+                this.isEffectFinished.set(true);
+            }
+        });
+
+        effect(() => {
+            if (this.originBaselineItems()) {
+                untracked(() => {
+                    this.setupBaselineItems();
+                    this.computeItemsRefs(...this.baselineItems);
+                });
+            }
+        });
+    }
 
     private createView() {
         const viewDate = this.getViewDate();
-
-        this.styles = Object.assign({}, this.configService.config.styleOptions, this.styles);
-        this.viewOptions.dateFormat = Object.assign({}, this.configService.config.dateFormat, this.viewOptions.dateFormat);
-        this.viewOptions.styleOptions = Object.assign({}, this.configService.config.styleOptions, this.viewOptions.styleOptions);
-        this.viewOptions.dateDisplayFormats = this.configService.getViewsLocale()[this.viewType]?.dateFormats;
-        this.view = createViewFactory(this.viewType, viewDate.start, viewDate.end, this.viewOptions);
+        const viewOptions = { ...this.viewOptions() };
+        viewOptions.styleOptions = this.configService.mergeStyleOptions(viewOptions.styleOptions);
+        const localeFormats = this.configService.getViewsLocale()[this.viewType()]?.tickFormats;
+        if (localeFormats) {
+            viewOptions.tickFormats = {
+                period: localeFormats.period,
+                unit: localeFormats.unit
+            };
+        }
+        this.view = createView(this.viewType(), viewDate.start, viewDate.end, viewOptions);
     }
 
     private setupGroups() {
-        const collapsedIds = this.groups.filter((group) => group.expanded === false).map((group) => group.id);
+        const collapsedIds = this.originGroups()
+            .filter((group) => group.expanded === false)
+            .map((group) => group.id);
         this.groupsMap = {};
         this.groups = [];
-        this.originGroups.forEach((origin) => {
+        this.originGroups().forEach((origin) => {
             const group = new GanttGroupInternal(origin);
             group.expanded = !collapsedIds.includes(group.id);
             this.groupsMap[group.id] = group;
@@ -212,11 +256,11 @@ export abstract class GanttUpper implements OnChanges, OnInit, OnDestroy {
         });
     }
 
-    private setupItems() {
-        this.originItems = uniqBy(this.originItems, 'id');
+    protected setupItems() {
+        // this.originItems = uniqBy(this.originItems(), 'id');
         this.items = [];
         if (this.groups.length > 0) {
-            this.originItems.forEach((origin) => {
+            this.originItems().forEach((origin) => {
                 const group = this.groupsMap[origin.group_id];
                 if (group) {
                     const item = new GanttItemInternal(origin, 0, this.view);
@@ -224,7 +268,7 @@ export abstract class GanttUpper implements OnChanges, OnInit, OnDestroy {
                 }
             });
         } else {
-            this.originItems.forEach((origin) => {
+            this.originItems().forEach((origin) => {
                 const item = new GanttItemInternal(origin, 0, this.view);
                 this.items.push(item);
             });
@@ -232,10 +276,10 @@ export abstract class GanttUpper implements OnChanges, OnInit, OnDestroy {
     }
 
     private setupBaselineItems() {
-        this.originBaselineItems = uniqBy(this.originBaselineItems, 'id');
+        // this.originBaselineItems = uniqBy(this.originBaselineItems(), 'id');
         this.baselineItems = [];
 
-        this.originBaselineItems.forEach((origin) => {
+        this.originBaselineItems().forEach((origin) => {
             const item = new GanttBaselineItemInternal(origin);
             this.baselineItems.push(item);
         });
@@ -244,9 +288,9 @@ export abstract class GanttUpper implements OnChanges, OnInit, OnDestroy {
     }
 
     private setupExpandedState() {
-        this.originItems = uniqBy(this.originItems, 'id');
+        // this.originItems = uniqBy(this.originItems(), 'id');
         let items: GanttItemInternal[] = [];
-        const flatOriginItems = getFlatItems(this.originItems);
+        const flatOriginItems = getFlatItems(this.originItems());
 
         if (this.items.length > 0) {
             items = recursiveItems(this.items);
@@ -266,16 +310,16 @@ export abstract class GanttUpper implements OnChanges, OnInit, OnDestroy {
     }
 
     private getViewDate() {
-        let start = this.start;
-        let end = this.end;
-        if (!this.start || !this.end) {
-            this.originItems.forEach((item) => {
-                if (item.start && !this.start) {
+        let start = this.start();
+        let end = this.end();
+        if (!start || !end) {
+            this.originItems().forEach((item) => {
+                if (item.start && !this.start()) {
                     const itemStart = item.start instanceof Date ? getUnixTime(item.start) : item.start;
                     start = start ? Math.min(start, itemStart) : itemStart;
                 }
-                if (item.end && !this.end) {
-                    const itemEnd = item.start instanceof Date ? getUnixTime(item.start) : item.start;
+                if (item.end && !this.end()) {
+                    const itemEnd = item.end instanceof Date ? getUnixTime(item.end) : item.end;
                     end = end ? Math.max(end, itemEnd) : itemEnd;
                 }
             });
@@ -283,98 +327,65 @@ export abstract class GanttUpper implements OnChanges, OnInit, OnDestroy {
         return {
             start: {
                 date: new GanttDate(start),
-                isCustom: this.start ? true : false
+                isCustom: this.start() ? true : false
             },
             end: {
                 date: new GanttDate(end),
-                isCustom: this.end ? true : false
+                isCustom: this.end() ? true : false
             }
         };
     }
 
     computeRefs() {
-        if (this.computeAllRefs) {
-            this.groups.forEach((group) => {
-                const groupItems = recursiveItems(group.items);
-                this.computeItemsRefs(...groupItems);
-            });
-            const items = recursiveItems(this.items);
-            this.computeItemsRefs(...items);
-        }
+        this.groups.forEach((group) => {
+            const groupItems = recursiveItems(group.items);
+            this.computeItemsRefs(...groupItems);
+        });
+        const items = recursiveItems(this.items);
+        this.computeItemsRefs(...items);
     }
 
     private initSelectionModel() {
-        return new SelectionModel(this.multiple, []);
+        const multiple = this.multiple();
+        const selectable = this.selectable();
+        if (selectable) {
+            this.selectionModel = new SelectionModel(multiple, []);
+        } else {
+            this.selectionModel?.clear();
+        }
     }
 
     expandGroups(expanded: boolean) {
         this.groups.forEach((group) => {
             group.setExpand(expanded);
         });
-        this.expandChange.next(null);
+        this.expandChange.emit(this.groups);
         this.cdr.detectChanges();
     }
 
     ngOnInit() {
         this.createView();
-        this.setupGroups();
-        this.setupItems();
-        this.computeRefs();
-        this.setupBaselineItems();
-        this.computeItemsRefs(...this.baselineItems);
-        this.initSelectionModel();
-        this.firstChange = false;
 
-        // Note: the zone may be nooped through `BootstrapOptions` when bootstrapping the root module. This means
-        // the `onStable` will never emit any value.
-        const onStable$ = this.ngZone.isStable ? from(Promise.resolve()) : this.ngZone.onStable.pipe(take(1));
-        // Normally this isn't in the zone, but it can cause performance regressions for apps
-        // using `zone-patch-rxjs` because it'll trigger a change detection when it unsubscribes.
         this.ngZone.runOutsideAngular(() => {
-            onStable$.pipe(takeUntil(this.unsubscribe$)).subscribe(() => {
-                this.element.style.opacity = '1';
-                const disabledLoadOnScroll = this.disabledLoadOnScroll;
-                this.dragContainer.dragStarted.pipe(takeUntil(this.unsubscribe$)).subscribe((event) => {
-                    this.disabledLoadOnScroll = true;
-                    this.dragStarted.emit(event);
-                });
+            this.element.style.opacity = '1';
+            this.dragContainer.dragStarted.pipe(takeUntil(this.unsubscribe$)).subscribe((event) => {
+                this.disableLoadOnScroll.set(true);
+                this.dragStarted.emit(event);
+            });
 
-                this.dragContainer.dragMoved.pipe(takeUntil(this.unsubscribe$)).subscribe((event) => {
-                    this.dragMoved.emit(event);
-                });
+            this.dragContainer.dragMoved.pipe(takeUntil(this.unsubscribe$)).subscribe((event) => {
+                this.dragMoved.emit(event);
+            });
 
-                this.dragContainer.dragEnded.pipe(takeUntil(this.unsubscribe$)).subscribe((event) => {
-                    this.disabledLoadOnScroll = disabledLoadOnScroll;
-                    this.dragEnded.emit(event);
-                });
+            this.dragContainer.dragEnded.pipe(takeUntil(this.unsubscribe$)).subscribe((event) => {
+                this.disableLoadOnScroll.set(this.disabledLoadOnScroll());
+                this.dragEnded.emit(event);
             });
         });
 
-        this.view.start$.pipe(skip(1), takeUntil(this.unsubscribe$)).subscribe(() => {
+        this.view?.start$.pipe(skip(1), takeUntil(this.unsubscribe$)).subscribe(() => {
             this.computeRefs();
         });
-    }
-
-    ngOnChanges(changes: SimpleChanges) {
-        if (!this.firstChange) {
-            if (changes.viewType && changes.viewType.currentValue && changes.viewType.currentValue !== changes.viewType.previousValue) {
-                this.changeView(changes.viewType.currentValue);
-            }
-            if (changes.viewOptions) {
-                this.changeView(this.viewType);
-            }
-            if (changes.originItems || changes.originGroups) {
-                this.setupExpandedState();
-                this.setupGroups();
-                this.setupItems();
-                this.computeRefs();
-            }
-
-            if (changes.originBaselineItems) {
-                this.setupBaselineItems();
-                this.computeItemsRefs(...this.baselineItems);
-            }
-        }
     }
 
     ngOnDestroy() {
@@ -385,9 +396,9 @@ export abstract class GanttUpper implements OnChanges, OnInit, OnDestroy {
     computeItemsRefs(...items: GanttItemInternal[] | GanttBaselineItemInternal[]) {
         items.forEach((item) => {
             item.updateRefs({
-                width: item.start && item.end ? this.view.getDateRangeWidth(item.start, item.end) : 0,
-                x: item.start ? this.view.getXPointByDate(item.start) : 0,
-                y: (this.styles.lineHeight - this.styles.barHeight) / 2 - 1
+                width: item.start && item.end ? this.view.calculateRangeWidth(item.start, item.end) : 0,
+                x: item.start ? this.view.getXAtDate(item.start) : 0,
+                y: (this.styles().rowHeight - this.styles().barHeight) / 2 - 1
             });
         });
     }
@@ -431,28 +442,29 @@ export abstract class GanttUpper implements OnChanges, OnInit, OnDestroy {
     }
 
     isSelected(id: string) {
-        if (!this.selectable) {
+        if (!this.selectable()) {
             return false;
         }
-        if (!this.selectionModel.hasValue()) {
+        if (!this.selectionModel?.hasValue()) {
             return false;
         }
-        return this.selectionModel.isSelected(id);
+        return this.selectionModel?.isSelected(id);
     }
 
-    changeView(type: GanttViewType) {
-        this.viewType = type;
+    changeView() {
         this.createView();
-        this.setupGroups();
-        this.setupItems();
-        this.computeRefs();
-        this.setupBaselineItems();
-        this.computeItemsRefs(...this.baselineItems);
+        if (this.previousViewType()) {
+            this.setupGroups();
+            this.setupItems();
+            this.computeRefs();
+            this.setupBaselineItems();
+            this.computeItemsRefs(...this.baselineItems);
+        }
         this.viewChange.emit(this.view);
     }
 
     rerenderView() {
-        this.changeView(this.viewType);
+        this.changeView();
     }
 }
 

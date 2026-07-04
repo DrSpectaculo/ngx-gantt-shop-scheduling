@@ -10,7 +10,7 @@ import { AppGanttVirtualScrollExampleComponent } from './gantt-virtual-scroll/ga
 
 const routes: Routes = [
     {
-        path: 'components',
+        path: 'examples',
         component: AppExampleComponentsComponent,
         children: [
             { path: '', redirectTo: 'basic', pathMatch: 'full' },
@@ -24,7 +24,13 @@ const routes: Routes = [
 ];
 
 @NgModule({
-    imports: [RouterModule.forRoot(routes)],
+    imports: [
+        RouterModule.forRoot(routes, {
+            useHash: false,
+            enableTracing: false,
+            onSameUrlNavigation: 'reload'
+        })
+    ],
     exports: [RouterModule]
 })
 export class AppRoutingModule {}

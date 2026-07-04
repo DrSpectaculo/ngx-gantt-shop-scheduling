@@ -1,29 +1,26 @@
 import { CdkFixedSizeVirtualScroll, CdkVirtualForOf, CdkVirtualScrollViewport, ViewportRuler } from '@angular/cdk/scrolling';
 import { NgClass, NgTemplateOutlet } from '@angular/common';
 import {
-    AfterViewChecked,
     AfterViewInit,
     ChangeDetectionStrategy,
-    ChangeDetectorRef,
     Component,
-    ContentChild,
-    ContentChildren,
     ElementRef,
-    EventEmitter,
-    Inject,
-    Input,
-    NgZone,
-    OnChanges,
     OnInit,
-    Output,
-    QueryList,
-    SimpleChanges,
     TemplateRef,
-    ViewChild,
-    forwardRef
+    afterEveryRender,
+    contentChild,
+    contentChildren,
+    effect,
+    forwardRef,
+    inject,
+    input,
+    output,
+    signal,
+    untracked,
+    viewChild
 } from '@angular/core';
-import { Observable, from } from 'rxjs';
-import { finalize, skip, take, takeUntil } from 'rxjs/operators';
+import { Observable } from 'rxjs';
+import { finalize, take, takeUntil } from 'rxjs/operators';
 import {
     GanttGroupInternal,
     GanttItem,
@@ -33,7 +30,6 @@ import {
     GanttSelectedEvent,
     GanttTableDragEndedEvent,
     GanttTableDragStartedEvent,
-    GanttViewType,
     GanttVirtualScrolledIndexChangeEvent
 } from './class';
 import { GanttCalendarGridComponent } from './components/calendar/grid/calendar-grid.component';
@@ -44,9 +40,9 @@ import { GanttMainComponent } from './components/main/gantt-main.component';
 import { GanttScrollbarComponent } from './components/scrollbar/scrollbar.component';
 import { GanttTableBodyComponent } from './components/table/body/gantt-table-body.component';
 import { GanttTableHeaderComponent } from './components/table/header/gantt-table-header.component';
+import { GanttSyncScrollXDirective, GanttSyncScrollYDirective } from './directives/sync-scroll.directive';
 import { GANTT_ABSTRACT_TOKEN } from './gantt-abstract';
 import { GANTT_UPPER_TOKEN, GanttUpper } from './gantt-upper';
-import { GANTT_GLOBAL_CONFIG, GanttGlobalConfig } from './gantt.config';
 import { NgxGanttRootComponent } from './root.component';
 import { NgxGanttTableColumnComponent } from './table/gantt-column.component';
 import { NgxGanttTableComponent } from './table/gantt-table.component';
@@ -60,7 +56,7 @@ import { Dictionary, keyBy, recursiveItems, uniqBy } from './utils/helpers';
     providers: [
         {
             provide: GANTT_UPPER_TOKEN,
-            useExisting: NgxGanttComponent
+            useExisting: forwardRef(() => NgxGanttComponent)
         },
         {
             provide: GANTT_ABSTRACT_TOKEN,
@@ -81,72 +77,61 @@ import { Dictionary, keyBy, recursiveItems, uniqBy } from './utils/helpers';
         GanttMainComponent,
         GanttDragBackdropComponent,
         GanttScrollbarComponent,
-        NgTemplateOutlet
+        NgTemplateOutlet,
+        GanttSyncScrollXDirective,
+        GanttSyncScrollYDirective
     ]
 })
-export class NgxGanttComponent extends GanttUpper implements OnInit, OnChanges, AfterViewInit, AfterViewChecked {
-    @Input() maxLevel = 2;
+export class NgxGanttComponent extends GanttUpper implements OnInit, AfterViewInit {
+    private viewportRuler = inject(ViewportRuler);
 
-    @Input() async: boolean;
+    readonly maxLevel = input(2);
 
-    @Input() childrenResolve: (GanttItem) => Observable<GanttItem[]>;
+    readonly async = input<boolean>();
 
-    @Input() override linkable: boolean;
+    readonly childrenResolve = input<(GanttItem) => Observable<GanttItem[]>>();
 
-    @Input() set loading(loading: boolean) {
-        if (loading) {
-            if (this.loadingDelay > 0) {
-                this.loadingTimer = setTimeout(() => {
-                    this._loading = loading;
-                    this.cdr.markForCheck();
-                }, this.loadingDelay);
-            } else {
-                this._loading = loading;
-            }
-        } else {
-            clearTimeout(this.loadingTimer);
-            this._loading = loading;
-        }
-    }
+    override readonly linkable = input<boolean>();
 
-    @Input() virtualScrollEnabled = true;
+    readonly loading = input<boolean>();
 
-    @Input() loadingDelay = 0;
+    readonly virtualScrollEnabled = input(true);
 
-    @Output() linkDragStarted = new EventEmitter<GanttLinkDragEvent>();
+    readonly loadingDelay = input(0);
 
-    @Output() override linkDragEnded = new EventEmitter<GanttLinkDragEvent>();
+    readonly linkDragStarted = output<GanttLinkDragEvent>();
 
-    @Output() lineClick = new EventEmitter<GanttLineClickEvent>();
+    override readonly linkDragEnded = output<GanttLinkDragEvent>();
 
-    @Output() selectedChange = new EventEmitter<GanttSelectedEvent>();
+    readonly lineClick = output<GanttLineClickEvent>();
 
-    @Output() virtualScrolledIndexChange = new EventEmitter<GanttVirtualScrolledIndexChangeEvent>();
+    readonly selectedChange = output<GanttSelectedEvent>();
 
-    @ContentChild(NgxGanttTableComponent) override table: NgxGanttTableComponent;
+    readonly virtualScrolledIndexChange = output<GanttVirtualScrolledIndexChangeEvent>();
 
-    @ContentChildren(NgxGanttTableColumnComponent, { descendants: true }) columns: QueryList<NgxGanttTableColumnComponent>;
+    override readonly table = contentChild(NgxGanttTableComponent);
 
-    // 此模版已挪到 table 组件下，为了兼容此处暂时保留
-    @ContentChild('tableEmpty', { static: true }) tableEmptyTemplate: TemplateRef<any>;
+    readonly columns = contentChildren(NgxGanttTableColumnComponent, { descendants: true });
 
-    @ViewChild('ganttRoot') ganttRoot: NgxGanttRootComponent;
+    readonly ganttRoot = viewChild<NgxGanttRootComponent>('ganttRoot');
 
-    @ContentChild('footer', { static: true }) footerTemplate: TemplateRef<any>;
+    readonly footerTemplate = contentChild<TemplateRef<any>>('footer');
 
-    @ViewChild(CdkVirtualScrollViewport) virtualScroll: CdkVirtualScrollViewport;
+    readonly virtualScroll = viewChild(CdkVirtualScrollViewport);
 
-    get loading() {
-        return this._loading;
-    }
+    readonly ganttTableBody = viewChild<ElementRef<HTMLDivElement>>('ganttTableBody');
+
+    public realLoading = false;
+
+    public tableScrollWidth = signal<number>(0);
+
+    private resizeObserver: ResizeObserver;
 
     public flatItems: (GanttGroupInternal | GanttItemInternal)[] = [];
 
     public viewportItems: (GanttGroupInternal | GanttItemInternal)[] = [];
 
-    private _loading = false;
-
-    private loadingTimer;
+    private loadingTimer: ReturnType<typeof setTimeout> | null = null;
 
     private rangeStart = 0;
 
@@ -156,88 +141,97 @@ export class NgxGanttComponent extends GanttUpper implements OnInit, OnChanges, 
 
     private draggingItem: GanttItem;
 
-    constructor(
-        elementRef: ElementRef<HTMLElement>,
-        cdr: ChangeDetectorRef,
-        ngZone: NgZone,
-        private viewportRuler: ViewportRuler,
-        @Inject(GANTT_GLOBAL_CONFIG) config: GanttGlobalConfig
-    ) {
-        super(elementRef, cdr, ngZone, config);
-        this.computeAllRefs = false;
+    constructor() {
+        super();
+        afterEveryRender(() => {
+            if (this.virtualScrollEnabled() && this.viewportRuler && this.virtualScroll().getRenderedRange().end > 0) {
+                const ganttRoot = this.ganttRoot();
+                if (!ganttRoot.verticalScrollbarWidth) {
+                    ganttRoot.computeScrollBarOffset();
+                }
+            }
+        });
+
+        effect(() => {
+            const loading = this.loading();
+            if (loading) {
+                untracked(() => {
+                    if (this.loadingDelay() > 0) {
+                        this.loadingTimer = setTimeout(() => {
+                            this.realLoading = loading;
+                            this.cdr.markForCheck();
+                        }, this.loadingDelay());
+                    } else {
+                        this.realLoading = loading;
+                    }
+                });
+            } else {
+                clearTimeout(this.loadingTimer);
+                this.realLoading = loading;
+            }
+        });
     }
 
     override ngOnInit() {
         super.ngOnInit();
-        this.buildFlatItems();
-        // Note: the zone may be nooped through `BootstrapOptions` when bootstrapping the root module. This means
-        // the `onStable` will never emit any value.
-        const onStable$ = this.ngZone.isStable ? from(Promise.resolve()) : this.ngZone.onStable.pipe(take(1));
-        // Normally this isn't in the zone, but it can cause performance regressions for apps
-        // using `zone-patch-rxjs` because it'll trigger a change detection when it unsubscribes.
         this.ngZone.runOutsideAngular(() => {
-            onStable$.pipe(takeUntil(this.unsubscribe$)).subscribe(() => {
-                this.dragContainer.linkDragStarted.pipe(takeUntil(this.unsubscribe$)).subscribe((event: GanttLinkDragEvent) => {
-                    this.linkDragStarted.emit(event);
-                });
+            this.dragContainer.linkDragStarted.pipe(takeUntil(this.unsubscribe$)).subscribe((event: GanttLinkDragEvent) => {
+                this.linkDragStarted.emit(event);
+            });
 
-                this.dragContainer.linkDragEnded.pipe(takeUntil(this.unsubscribe$)).subscribe((event: GanttLinkDragEvent) => {
-                    this.linkDragEnded.emit(event);
-                });
+            this.dragContainer.linkDragEnded.pipe(takeUntil(this.unsubscribe$)).subscribe((event: GanttLinkDragEvent) => {
+                this.linkDragEnded.emit(event);
             });
         });
 
-        this.view.start$.pipe(skip(1), takeUntil(this.unsubscribe$)).subscribe(() => {
-            this.computeTempDataRefs();
-        });
-
-        if (!this.virtualScrollEnabled) {
+        // 如果虚拟滚动未启用，初始化时需要手动填充 viewportItems
+        if (!this.virtualScrollEnabled()) {
             this.viewportItems = this.flatItems.slice(this.rangeStart, this.rangeEnd);
-            this.computeTempDataRefs();
+            this.computeRefs();
         }
     }
 
-    override ngOnChanges(changes: SimpleChanges) {
-        super.ngOnChanges(changes);
-        if (!this.firstChange) {
-            if (changes.viewType && changes.viewType.currentValue) {
-                this.viewportItems = this.flatItems.slice(this.rangeStart, this.rangeEnd);
-                this.computeTempDataRefs();
+    override computeRefs() {
+        const tempItemData = [];
+        this.viewportItems.forEach((data: GanttGroupInternal | GanttItemInternal) => {
+            if (!data.hasOwnProperty('items')) {
+                const item = data as GanttItemInternal;
+                if (item.links) {
+                    item.links.forEach((link) => {
+                        if (this.flatItemsMap[link.link]) {
+                            tempItemData.push(this.flatItemsMap[link.link]);
+                        }
+                    });
+                }
+                tempItemData.push(data);
             }
-            if (changes.originItems || changes.originGroups) {
-                this.buildFlatItems();
-                this.viewportItems = this.flatItems.slice(this.rangeStart, this.rangeEnd);
-                this.computeTempDataRefs();
-            }
-        }
+        });
+        this.computeItemsRefs(...uniqBy(tempItemData, 'id'));
+        this.flatItems = [...this.flatItems];
+        this.viewportItems = [...this.viewportItems];
+    }
+
+    override setupItems() {
+        super.setupItems();
+        this.buildFlatItems();
+        this.viewportItems = this.flatItems.slice(this.rangeStart, this.rangeEnd);
     }
 
     ngAfterViewInit() {
-        if (this.virtualScrollEnabled) {
-            this.virtualScroll.renderedRangeStream.pipe(takeUntil(this.unsubscribe$)).subscribe((range) => {
-                const linksElement = this.elementRef.nativeElement.querySelector('.gantt-links-overlay') as HTMLDivElement;
-                linksElement.style.top = `${-(this.styles.lineHeight * range.start)}px`;
-                this.rangeStart = range.start;
-                this.rangeEnd = range.end;
-                this.viewportItems = this.flatItems.slice(range.start, range.end);
-                this.appendDraggingItemToViewportItems();
-                this.computeTempDataRefs();
-            });
-        }
-    }
-
-    ngAfterViewChecked() {
-        if (this.virtualScrollEnabled && this.viewportRuler && this.virtualScroll.getRenderedRange().end > 0) {
-            const onStable$ = this.ngZone.isStable ? from(Promise.resolve()) : this.ngZone.onStable.pipe(take(1));
-            this.ngZone.runOutsideAngular(() => {
-                onStable$.pipe(takeUntil(this.unsubscribe$)).subscribe(() => {
-                    if (!this.ganttRoot.verticalScrollbarWidth) {
-                        this.ganttRoot.computeScrollBarOffset();
-                        this.cdr.markForCheck();
-                    }
+        if (this.virtualScrollEnabled()) {
+            this.virtualScroll()
+                .renderedRangeStream.pipe(takeUntil(this.unsubscribe$))
+                .subscribe((range) => {
+                    const linksElement = this.elementRef.nativeElement.querySelector('.gantt-links-overlay') as HTMLDivElement;
+                    linksElement.style.top = `${-(this.styles().rowHeight * range.start)}px`;
+                    this.rangeStart = range.start;
+                    this.rangeEnd = range.end;
+                    this.viewportItems = this.flatItems.slice(range.start, range.end);
+                    this.appendDraggingItemToViewportItems();
+                    this.computeRefs();
                 });
-            });
         }
+        this.initScrollContainerObserver();
     }
 
     private buildFlatItems() {
@@ -257,7 +251,7 @@ export class NgxGanttComponent extends GanttUpper implements OnInit, OnChanges, 
         }
         this.flatItems = [...virtualData];
         this.flatItemsMap = keyBy(this.flatItems, 'id');
-        if (!this.virtualScrollEnabled) {
+        if (!this.virtualScrollEnabled()) {
             this.rangeStart = 0;
             this.rangeEnd = this.flatItems.length;
         }
@@ -266,26 +260,6 @@ export class NgxGanttComponent extends GanttUpper implements OnInit, OnChanges, 
     private afterExpand() {
         this.buildFlatItems();
         this.viewportItems = this.flatItems.slice(this.rangeStart, this.rangeEnd);
-    }
-
-    private computeTempDataRefs() {
-        const tempItemData = [];
-        this.viewportItems.forEach((data: GanttGroupInternal | GanttItemInternal) => {
-            if (!data.hasOwnProperty('items')) {
-                const item = data as GanttItemInternal;
-                if (item.links) {
-                    item.links.forEach((link) => {
-                        if (this.flatItemsMap[link.link]) {
-                            tempItemData.push(this.flatItemsMap[link.link]);
-                        }
-                    });
-                }
-                tempItemData.push(data);
-            }
-        });
-        this.computeItemsRefs(...uniqBy(tempItemData, 'id'));
-        this.flatItems = [...this.flatItems];
-        this.viewportItems = [...this.viewportItems];
     }
 
     private appendDraggingItemToViewportItems() {
@@ -307,9 +281,10 @@ export class NgxGanttComponent extends GanttUpper implements OnInit, OnChanges, 
     expandChildren(item: GanttItemInternal) {
         if (!item.expanded) {
             item.setExpand(true);
-            if (this.async && this.childrenResolve && item.children.length === 0) {
+            const childrenResolve = this.childrenResolve();
+            if (this.async() && childrenResolve && item.children.length === 0) {
                 item.loading = true;
-                this.childrenResolve(item.origin)
+                childrenResolve(item.origin)
                     .pipe(
                         take(1),
                         finalize(() => {
@@ -336,19 +311,19 @@ export class NgxGanttComponent extends GanttUpper implements OnInit, OnChanges, 
     }
 
     selectItem(selectEvent: GanttSelectedEvent) {
-        this.table.itemClick.emit({
+        this.table().itemClick.emit({
             event: selectEvent.event,
             current: selectEvent.current
         });
 
-        if (!this.selectable) {
+        if (!this.selectable()) {
             return;
         }
         const { event, selectedValue } = selectEvent;
         this.selectionModel.toggle((selectedValue as GanttItem).id);
 
         const selectedIds = this.selectionModel.selected;
-        if (this.multiple) {
+        if (this.multiple()) {
             const _selectedValue = this.getGanttItems(selectedIds).map((item) => item.origin);
             this.selectedChange.emit({ event, current: selectedValue as GanttItem, selectedValue: _selectedValue });
         } else {
@@ -358,11 +333,11 @@ export class NgxGanttComponent extends GanttUpper implements OnInit, OnChanges, 
     }
 
     scrollToToday() {
-        this.ganttRoot.scrollToToday();
+        this.ganttRoot().scrollToToday();
     }
 
     scrollToDate(date: number | Date | GanttDate) {
-        this.ganttRoot.scrollToDate(date);
+        this.ganttRoot().scrollToDate(date);
     }
 
     scrolledIndexChange(index: number) {
@@ -376,36 +351,54 @@ export class NgxGanttComponent extends GanttUpper implements OnInit, OnChanges, 
         });
     }
 
-    override changeView(type: GanttViewType) {
-        super.changeView(type);
-        this.viewportItems = this.flatItems.slice(this.rangeStart, this.rangeEnd);
-        this.computeTempDataRefs();
-    }
-
     override expandGroups(expanded: boolean) {
         this.groups.forEach((group) => {
             group.setExpand(expanded);
         });
 
         this.afterExpand();
-        this.expandChange.next(null);
+        this.expandChange.emit(this.groups);
         this.cdr.detectChanges();
     }
 
     override expandGroup(group: GanttGroupInternal) {
         group.setExpand(!group.expanded);
         this.afterExpand();
-        this.expandChange.emit();
+        this.expandChange.emit(group);
         this.cdr.detectChanges();
     }
 
     itemDragStarted(event: GanttTableDragStartedEvent) {
-        this.table.dragStarted.emit(event);
+        this.table().dragStarted.emit(event);
         this.draggingItem = event.source;
     }
 
     itemDragEnded(event: GanttTableDragEndedEvent) {
-        this.table.dragEnded.emit(event);
+        this.table().dragEnded.emit(event);
         this.draggingItem = null;
+    }
+
+    private initScrollContainerObserver() {
+        const ganttTableBody = this.ganttTableBody();
+        if (ganttTableBody && ganttTableBody['elementRef']?.nativeElement) {
+            this.tableScrollWidth.set(ganttTableBody['elementRef'].nativeElement.clientWidth);
+            if (typeof ResizeObserver !== 'undefined') {
+                this.resizeObserver = new ResizeObserver((entries) => {
+                    const newWidth = entries[0].target.clientWidth;
+                    if (this.tableScrollWidth() !== newWidth) {
+                        this.tableScrollWidth.set(newWidth);
+                        this.cdr.markForCheck();
+                    }
+                });
+                this.resizeObserver.observe(ganttTableBody['elementRef'].nativeElement);
+            }
+        }
+    }
+
+    override ngOnDestroy() {
+        super.ngOnDestroy();
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+        }
     }
 }

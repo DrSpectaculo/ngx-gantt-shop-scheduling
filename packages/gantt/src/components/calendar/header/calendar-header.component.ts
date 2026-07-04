@@ -1,4 +1,5 @@
-import { Component, OnInit, HostBinding, Inject, NgZone, ElementRef } from '@angular/core';
+import { outputToObservable } from '@angular/core/rxjs-interop';
+import { Component, OnInit, HostBinding, NgZone, ElementRef, inject } from '@angular/core';
 import { todayHeight, todayWidth } from '../../../gantt.styles';
 import { GANTT_UPPER_TOKEN, GanttUpper } from '../../../gantt-upper';
 import { GanttViewType } from '../../../class';
@@ -14,6 +15,10 @@ import { NgStyle } from '@angular/common';
     imports: [NgStyle]
 })
 export class GanttCalendarHeaderComponent implements OnInit {
+    ganttUpper = inject<GanttUpper>(GANTT_UPPER_TOKEN);
+
+    private elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+
     get view() {
         return this.ganttUpper.view;
     }
@@ -24,30 +29,18 @@ export class GanttCalendarHeaderComponent implements OnInit {
 
     @HostBinding('class') className = `gantt-calendar gantt-calendar-header`;
 
-    @HostBinding('style.height')
-    get height() {
-        return this.ganttUpper.styles.headerHeight + 'px';
-    }
-
-    constructor(
-        @Inject(GANTT_UPPER_TOKEN) public ganttUpper: GanttUpper,
-        private ngZone: NgZone,
-        private elementRef: ElementRef<HTMLElement>
-    ) {}
+    constructor() {}
 
     ngOnInit() {
-        // 头部日期定位
-        this.ngZone.onStable.pipe(take(1)).subscribe(() => {
-            merge(this.ganttUpper.viewChange, this.ganttUpper.view.start$)
-                .pipe(takeUntil(this.unsubscribe$))
-                .subscribe(() => {
-                    if (this.ganttUpper.viewType === GanttViewType.day) this.setTodayPoint();
-                });
-        });
+        merge(outputToObservable(this.ganttUpper.viewChange), this.ganttUpper.view.start$)
+            .pipe(takeUntil(this.unsubscribe$))
+            .subscribe(() => {
+                if (this.ganttUpper.viewType() === GanttViewType.day) this.setTodayPoint();
+            });
     }
 
     setTodayPoint() {
-        const x = this.view.getTodayXPoint();
+        const x = this.view.getNowX();
         const today = new GanttDate().getDate();
         const todayEle = this.elementRef.nativeElement.getElementsByClassName('gantt-calendar-today-overlay')[0] as HTMLElement;
         const rect = this.elementRef.nativeElement.getElementsByClassName('today-rect')[0] as HTMLElement;
@@ -55,7 +48,7 @@ export class GanttCalendarHeaderComponent implements OnInit {
         if (isNumber(x)) {
             if (rect) {
                 rect.style.left = `${x - todayWidth / 2}px`;
-                rect.style.top = `${this.ganttUpper.styles.headerHeight - todayHeight}px`;
+                rect.style.top = `${this.ganttUpper.styles().headerHeight - todayHeight}px`;
                 rect.innerHTML = today.toString();
             }
         } else {

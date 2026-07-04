@@ -1,8 +1,7 @@
 import { DragDropModule } from '@angular/cdk/drag-drop';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { CommonModule } from '@angular/common';
-import { inject, NgModule } from '@angular/core';
-import { setDefaultOptions } from 'date-fns';
+import { NgModule } from '@angular/core';
 import { NgxGanttBarComponent } from './components/bar/bar.component';
 import { NgxGanttBaselineComponent } from './components/baseline/baseline.component';
 import { GanttCalendarGridComponent } from './components/calendar/grid/calendar-grid.component';
@@ -17,13 +16,14 @@ import { GanttTableBodyComponent } from './components/table/body/gantt-table-bod
 import { GanttTableHeaderComponent } from './components/table/header/gantt-table-header.component';
 import { NgxGanttToolbarComponent } from './components/toolbar/toolbar.component';
 import { NgxGanttComponent } from './gantt.component';
-import { GANTT_GLOBAL_CONFIG, GanttConfigService, GanttGlobalConfig, defaultConfig } from './gantt.config';
+import { GANTT_GLOBAL_CONFIG, defaultConfig } from './gantt.config';
 import { IsGanttBarItemPipe, IsGanttCustomItemPipe, IsGanttGroupPipe, IsGanttRangeItemPipe } from './gantt.pipe';
 import { NgxGanttRootComponent } from './root.component';
 import { NgxGanttTableColumnComponent } from './table/gantt-column.component';
 import { NgxGanttTableComponent } from './table/gantt-table.component';
 import { GanttScrollbarComponent } from './components/scrollbar/scrollbar.component';
 import { i18nLocaleProvides } from './i18n';
+import { NgxGanttPlaceholderComponent } from './components/bar/placeholder.component';
 
 @NgModule({
     imports: [
@@ -48,6 +48,7 @@ import { i18nLocaleProvides } from './i18n';
         NgxGanttBaselineComponent,
         NgxGanttToolbarComponent,
         GanttScrollbarComponent,
+        NgxGanttPlaceholderComponent,
         IsGanttRangeItemPipe,
         IsGanttBarItemPipe,
         IsGanttCustomItemPipe,
@@ -62,6 +63,7 @@ import { i18nLocaleProvides } from './i18n';
         NgxGanttRangeComponent,
         NgxGanttBaselineComponent,
         NgxGanttToolbarComponent,
+        NgxGanttPlaceholderComponent,
         GanttCalendarHeaderComponent,
         GanttCalendarGridComponent,
         GanttDragBackdropComponent,
@@ -77,12 +79,5 @@ import { i18nLocaleProvides } from './i18n';
     ]
 })
 export class NgxGanttModule {
-    constructor() {
-        const configService = inject(GanttConfigService);
-
-        setDefaultOptions({
-            locale: configService.getDateLocale(),
-            weekStartsOn: configService.config?.dateOptions?.weekStartsOn
-        });
-    }
+    constructor() {}
 }

@@ -1,4 +1,4 @@
-import { Injectable, EventEmitter, Inject } from '@angular/core';
+import { Injectable, EventEmitter, inject } from '@angular/core';
 import { GanttLinkType } from './class';
 import { GanttDragEvent, GanttLinkDragEvent } from './class/event';
 import { GanttItemInternal } from './class/item';
@@ -35,6 +35,8 @@ export interface LinkDragPath {
 
 @Injectable()
 export class GanttDragContainer {
+    ganttUpper = inject<GanttUpper>(GANTT_UPPER_TOKEN);
+
     dragStarted = new EventEmitter<GanttDragEvent>();
 
     dragMoved = new EventEmitter<GanttDragEvent>();
@@ -51,7 +53,7 @@ export class GanttDragContainer {
 
     linkDragPath: LinkDragPath = { from: null, to: null };
 
-    constructor(@Inject(GANTT_UPPER_TOKEN) public ganttUpper: GanttUpper) {}
+    constructor() {}
 
     emitLinkDragStarted(from: LinkDragPosition) {
         this.linkDraggingId = from.item.id;
@@ -77,7 +79,7 @@ export class GanttDragContainer {
     emitLinkDragEnded(to?: LinkDragPosition) {
         if (to) {
             this.linkDragPath.to = to;
-            const dependencyType = getDependencyType(this.linkDragPath, this.ganttUpper.linkOptions?.dependencyTypes);
+            const dependencyType = getDependencyType(this.linkDragPath, this.ganttUpper.linkOptions()?.dependencyTypes);
             this.linkDragPath.from.item.addLink({
                 link: this.linkDragPath.to.item.id,
                 type: dependencyType

@@ -1,30 +1,30 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
-    Component,
-    OnInit,
-    HostBinding,
-    ElementRef,
-    OnChanges,
-    OnDestroy,
-    Inject,
-    ViewChild,
-    Output,
-    EventEmitter,
     AfterViewInit,
+    Component,
+    ElementRef,
+    OnDestroy,
+    output,
+    viewChild,
     ViewChildren,
     QueryList,
+    inject,
     NgZone,
-    SimpleChanges
+    effect,
+    linkedSignal,
+    Signal,
+    HostBinding,
+    OnInit,
+    afterNextRender
 } from '@angular/core';
-import { from, fromEvent, merge, Observable } from 'rxjs';
-import { startWith, switchMap, take, takeUntil } from 'rxjs/operators';
+import { fromEvent, merge, Observable } from 'rxjs';
+import { startWith, switchMap, takeUntil } from 'rxjs/operators';
 import { GanttBarDrag } from './bar-drag';
 import { hexToRgb } from '../../utils/helpers';
 import { GanttDragContainer } from '../../gantt-drag-container';
-import { barBackground } from '../../gantt.styles';
-import { GanttBarClickEvent } from '../../class';
+import { GanttBarClickEvent, GanttItemInternal } from '../../class';
 import { GANTT_UPPER_TOKEN, GanttUpper } from '../../gantt-upper';
 import { GanttItemUpper } from '../../gantt-item-upper';
-import { NgTemplateOutlet } from '@angular/common';
 
 function linearGradient(sideOrCorner: string, color: string, stop: string) {
     return `linear-gradient(${sideOrCorner},${color} 0%,${stop} 40%)`;
@@ -36,27 +36,53 @@ function linearGradient(sideOrCorner: string, color: string, stop: string) {
     providers: [GanttBarDrag],
     imports: [NgTemplateOutlet]
 })
-export class NgxGanttBarComponent extends GanttItemUpper implements OnInit, AfterViewInit, OnChanges, OnDestroy {
-    @Output() barClick = new EventEmitter<GanttBarClickEvent>();
+export class NgxGanttBarComponent extends GanttItemUpper implements OnInit, AfterViewInit, OnDestroy {
+    private dragContainer = inject(GanttDragContainer);
 
-    @ViewChild('content') contentElementRef: ElementRef<HTMLDivElement>;
+    private drag = inject(GanttBarDrag);
+
+    private ngZone = inject(NgZone);
+
+    override ganttUpper = inject<GanttUpper>(GANTT_UPPER_TOKEN);
+
+    readonly barClick = output<GanttBarClickEvent>();
+
+    readonly contentElementRef = viewChild<ElementRef<HTMLDivElement>>('content');
+
+    readonly previousItem: Signal<GanttItemInternal> = linkedSignal({
+        source: () => this.item(),
+        computation: (source, previous) => previous?.source
+    });
 
     @HostBinding('class.gantt-bar') ganttItemClass = true;
 
     @ViewChildren('handle') handles: QueryList<ElementRef<HTMLElement>>;
 
-    constructor(
-        private dragContainer: GanttDragContainer,
-        private drag: GanttBarDrag,
-        elementRef: ElementRef<HTMLDivElement>,
-        @Inject(GANTT_UPPER_TOKEN) public override ganttUpper: GanttUpper,
-        private ngZone: NgZone
-    ) {
-        super(elementRef, ganttUpper);
+    constructor() {
+        super();
+        afterNextRender(() => {
+            this.ngZone.runOutsideAngular(() => {
+                this.drag.initialize(this.elementRef, this.item(), this.ganttUpper);
+            });
+        });
+        effect(() => {
+            const item = this.item();
+            const previousItem = this.previousItem();
+            if (item && previousItem && item !== previousItem) {
+                this.drag.updateItem(item);
+                if (
+                    item.refs?.width !== previousItem.refs?.width ||
+                    item.color !== previousItem.color ||
+                    item.start?.value !== previousItem.start?.value ||
+                    item.end?.value !== previousItem.end?.value
+                ) {
+                    this.setContentBackground();
+                }
+            }
+        });
     }
 
-    override ngOnInit() {
-        super.ngOnInit();
+    ngOnInit() {
         this.dragContainer.dragStarted.pipe(takeUntil(this.unsubscribe$)).subscribe(() => {
             this.elementRef.nativeElement.style.pointerEvents = 'none';
         });
@@ -66,36 +92,8 @@ export class NgxGanttBarComponent extends GanttItemUpper implements OnInit, Afte
         });
     }
 
-    override ngOnChanges(changes: SimpleChanges): void {
-        super.ngOnChanges(changes);
-        if (!this.firstChange) {
-            this.drag.updateItem(this.item);
-
-            if (
-                changes.item.currentValue.refs?.width !== changes.item.previousValue.refs?.width ||
-                changes.item.currentValue.color !== changes.item.previousValue.color ||
-                changes.item.currentValue.start?.value !== changes.item.previousValue.start?.value ||
-                changes.item.currentValue.end?.value !== changes.item.previousValue.end?.value
-            ) {
-                this.setContentBackground();
-            }
-        }
-    }
-
     ngAfterViewInit() {
-        // Note: the zone may be nooped through `BootstrapOptions` when bootstrapping the root module. This means
-        // the `onStable` will never emit any value.
-        const onStable$ = this.ngZone.isStable ? from(Promise.resolve()) : this.ngZone.onStable.pipe(take(1));
-        // Normally this isn't in the zone, but it can cause performance regressions for apps
-        // using `zone-patch-rxjs` because it'll trigger a change detection when it unsubscribes.
-        this.ngZone.runOutsideAngular(() => {
-            onStable$.pipe(takeUntil(this.unsubscribe$)).subscribe(() => {
-                this.drag.initialize(this.elementRef, this.item, this.ganttUpper);
-            });
-        });
-
         this.setContentBackground();
-
         this.handles.changes
             .pipe(
                 startWith(this.handles),
@@ -105,9 +103,7 @@ export class NgxGanttBarComponent extends GanttItemUpper implements OnInit, Afte
                         // is called when the `fromEvent` is subscribed.
                         new Observable<Event>((subscriber) =>
                             this.ngZone.runOutsideAngular(() =>
-                                merge(...this.handles.toArray().map((handle) => fromEvent(handle.nativeElement, 'mousedown'))).subscribe(
-                                    subscriber
-                                )
+                                merge(...this.handles.map((handle) => fromEvent(handle.nativeElement, 'mousedown'))).subscribe(subscriber)
                             )
                         )
                 ),
@@ -119,45 +115,47 @@ export class NgxGanttBarComponent extends GanttItemUpper implements OnInit, Afte
     }
 
     onBarClick(event: Event) {
-        this.barClick.emit({ event, item: this.item.origin });
+        this.barClick.emit({ event, item: this.item().origin });
     }
 
     private setContentBackground() {
-        if (this.item.refs?.width) {
-            const contentElement = this.contentElementRef.nativeElement;
-            const color = this.item.color || barBackground;
-            const style: Partial<CSSStyleDeclaration> = this.item.barStyle || {};
-            const barElement = this.elementRef.nativeElement;
+        const item = this.item();
+        let style: Partial<CSSStyleDeclaration> = { ...(item.barStyle || {}) };
+        const contentElement = this.contentElementRef().nativeElement;
+        const barElement = this.elementRef.nativeElement;
 
-            if (this.item.origin.start && this.item.origin.end) {
+        if (item.refs?.width) {
+            const color = item.color || this.ganttUpper.colors().primary;
+
+            if (item.origin.start && item.origin.end) {
                 style.background = color;
                 style.borderRadius = '';
             }
-            if (this.item.origin.start && !this.item.origin.end) {
+            if (item.origin.start && !item.origin.end) {
                 style.background = linearGradient('to left', hexToRgb(color, 0.55), hexToRgb(color, 1));
 
                 const borderRadius = '4px 12.5px 12.5px 4px';
                 style.borderRadius = borderRadius;
                 barElement.style.borderRadius = borderRadius;
             }
-            if (!this.item.origin.start && this.item.origin.end) {
+            if (!item.origin.start && item.origin.end) {
                 style.background = linearGradient('to right', hexToRgb(color, 0.55), hexToRgb(color, 1));
 
                 const borderRadius = '12.5px 4px 4px 12.5px';
                 style.borderRadius = borderRadius;
                 barElement.style.borderRadius = borderRadius;
             }
-            if (this.item.progress >= 0) {
+            if (item.progress >= 0) {
                 const contentProgressElement = contentElement.querySelector('.gantt-bar-content-progress') as HTMLDivElement;
                 style.background = hexToRgb(color, 0.3);
-                style.borderRadius = '';
                 contentProgressElement.style.background = color;
             }
+        }
+        style = Object.assign({}, style, item.barStyle || {});
 
-            for (const key in style) {
-                if (style.hasOwnProperty(key)) {
-                    contentElement.style[key] = style[key];
-                }
+        for (const key in style) {
+            if (style.hasOwnProperty(key)) {
+                contentElement.style[key] = style[key];
             }
         }
     }

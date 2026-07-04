@@ -1,0 +1,75 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master, v21.0.0-next]
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: 'pages'
+  cancel-in-progress: false
+
+jobs:
+  # Build job
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --force
+
+      - name: Build library
+        run: npm run build:lib
+
+      - name: Build documentation
+        run: |
+          # 定义恢复路由的脚本
+          # 放在 index.html 中，用于从 404.html 传来的查询参数恢复真实路径
+          REDIRECT_RECOVERY_SCRIPT='<script>(function(w){var l=w.location;if(!l.search){return;}var params=new URLSearchParams(l.search);var p=params.get("p");if(!p){return;}var q=params.get("q");var base=l.pathname.replace(/index\\.html$/,"").replace(/\\/$/,"");var target=base+decodeURIComponent(p);if(q){var decodedQ=decodeURIComponent(q);target+=decodedQ.startsWith("?")?decodedQ:"?"+decodedQ;}if(l.hash){target+=l.hash;}w.history.replaceState(null,"",target);})(window)</script>'
+
+          # 定义 404 转发脚本
+          # 放在 404.html 中，根据路径是否包含 v21 决定跳回哪一个 index.html
+          FOUR_OH_FOUR_SCRIPT='<script>(function(l){var path=l.pathname;var isV21=path.indexOf("/v21/")!==-1;var base=isV21?"/ngx-gantt/v21/":"/ngx-gantt/";var trimmed=path.replace(base,"");var target=base+"index.html?p="+encodeURIComponent("/"+trimmed)+(l.search?"&q="+encodeURIComponent(l.search.slice(1)):"")+l.hash;l.replace(target);})(window.location)</script>'
+
+          if [ "${{ github.ref }}" == "refs/heads/v21.0.0-next" ]; then
+            npm run build:next-docs:gh-pages
+            # 注入恢复脚本到 index.html
+            sed -i "s|<head>|<head>$REDIRECT_RECOVERY_SCRIPT|" dist/example/index.html
+            # 注入转发脚本到 404.html (基于 index.html 副本)
+            cp dist/example/index.html dist/example/404.html
+            sed -i "s|<head>|<head>$FOUR_OH_FOUR_SCRIPT|" dist/example/404.html
+            mkdir -p dist/example-combined/v21
+            cp -r dist/example/* dist/example-combined/v21/
+          else
+            npm run build:docs:gh-pages
+            # 注入恢复脚本到 index.html
+            sed -i "s|<head>|<head>$REDIRECT_RECOVERY_SCRIPT|" dist/example/index.html
+            # 注入转发脚本到 404.html (基于 index.html 副本)
+            cp dist/example/index.html dist/example/404.html
+            sed -i "s|<head>|<head>$FOUR_OH_FOUR_SCRIPT|" dist/example/404.html
+            mkdir -p dist/example-combined
+            cp -r dist/example/* dist/example-combined/
+          fi
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist/example-combined
+          keep_files: true
+          publish_branch: gh-pages

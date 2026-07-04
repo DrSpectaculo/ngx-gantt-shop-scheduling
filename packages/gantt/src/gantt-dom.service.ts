@@ -1,9 +1,10 @@
 import { isPlatformServer } from '@angular/common';
-import { ElementRef, Inject, Injectable, NgZone, OnDestroy, PLATFORM_ID, WritableSignal, signal } from '@angular/core';
+import { ElementRef, Injectable, NgZone, OnDestroy, PLATFORM_ID, WritableSignal, signal, inject } from '@angular/core';
+import { coerceCssPixelValue } from '@angular/cdk/coercion';
 import { EMPTY, Observable, Subject, fromEvent, merge } from 'rxjs';
-import { auditTime, map, pairwise, takeUntil } from 'rxjs/operators';
+import { auditTime, filter, map, pairwise, takeUntil } from 'rxjs/operators';
 import { isNumber } from './utils/helpers';
-import { passiveListenerOptions } from './utils/passive-listeners';
+import { GanttStyleOptions } from './gantt.config';
 
 const scrollThreshold = 50;
 
@@ -20,6 +21,9 @@ export interface ScrollEvent {
 
 @Injectable()
 export class GanttDomService implements OnDestroy {
+    private ngZone = inject(NgZone);
+    private platformId = inject(PLATFORM_ID);
+
     public root: Element;
 
     public side: Element;
@@ -48,48 +52,7 @@ export class GanttDomService implements OnDestroy {
 
     private unsubscribe$ = new Subject<void>();
 
-    constructor(
-        private ngZone: NgZone,
-        @Inject(PLATFORM_ID) private platformId: string
-    ) {}
-
-    private monitorScrollChange() {
-        const scrollObservers = [
-            fromEvent(this.mainContainer, 'scroll', passiveListenerOptions),
-            fromEvent(this.sideContainer, 'scroll', passiveListenerOptions)
-        ];
-
-        this.mainFooter && scrollObservers.push(fromEvent(this.mainFooter, 'scroll', passiveListenerOptions));
-        this.mainScrollbar && scrollObservers.push(fromEvent(this.mainScrollbar, 'scroll', passiveListenerOptions));
-
-        this.ngZone.runOutsideAngular(() =>
-            merge(...scrollObservers)
-                .pipe(takeUntil(this.unsubscribe$))
-                .subscribe((event) => {
-                    this.syncScroll(event);
-                })
-        );
-    }
-
-    private syncScroll(event: Event) {
-        const target = event.currentTarget as HTMLElement;
-        const classList = target.classList;
-
-        if (!classList.contains('gantt-side-container')) {
-            this.mainContainer.scrollLeft = target.scrollLeft;
-            this.calendarHeader.scrollLeft = target.scrollLeft;
-            this.calendarOverlay.scrollLeft = target.scrollLeft;
-            this.mainScrollbar && (this.mainScrollbar.scrollLeft = target.scrollLeft);
-            this.mainFooter && (this.mainFooter.scrollLeft = target.scrollLeft);
-            if (classList.contains('gantt-main-container')) {
-                this.sideContainer.scrollTop = target.scrollTop;
-                this.mainContainer.scrollTop = target.scrollTop;
-            }
-        } else {
-            this.sideContainer.scrollTop = target.scrollTop;
-            this.mainContainer.scrollTop = target.scrollTop;
-        }
-    }
+    constructor() {}
 
     private disableBrowserWheelEvent() {
         const container = this.mainContainer as HTMLElement;
@@ -126,7 +89,6 @@ export class GanttDomService implements OnDestroy {
         this.calendarHeader = this.root.getElementsByClassName('gantt-calendar-header')[0];
         this.calendarOverlay = this.root.getElementsByClassName('gantt-calendar-grid')[0];
 
-        this.monitorScrollChange();
         this.disableBrowserWheelEvent();
     }
 
@@ -147,25 +109,24 @@ export class GanttDomService implements OnDestroy {
                         pairwise(),
                         map(([previous, current]) => {
                             this.setVisibleRangeX();
-                            const event: ScrollEvent = {
-                                target: this.mainContainer,
-                                direction: ScrollDirection.NONE
-                            };
-                            if (current - previous < 0) {
-                                if (this.mainContainer.scrollLeft < scrollThreshold && this.mainContainer.scrollLeft > 0) {
-                                    event.direction = ScrollDirection.LEFT;
-                                }
-                            }
-                            if (current - previous > 0) {
-                                if (
-                                    this.mainContainer.scrollWidth - this.mainContainer.clientWidth - this.mainContainer.scrollLeft <
+                            // 向左滚动且接近起点 => 左侧扩展；向右滚动且接近末尾 => 右侧扩展
+                            let direction = ScrollDirection.NONE;
+                            if (current < previous && this.mainContainer.scrollLeft <= scrollThreshold) {
+                                direction = ScrollDirection.LEFT;
+                            } else if (
+                                current > previous &&
+                                this.mainContainer.scrollWidth - this.mainContainer.clientWidth - this.mainContainer.scrollLeft <=
                                     scrollThreshold
-                                ) {
-                                    event.direction = ScrollDirection.RIGHT;
-                                }
+                            ) {
+                                direction = ScrollDirection.RIGHT;
                             }
-                            return event;
-                        })
+
+                            return {
+                                target: this.mainContainer,
+                                direction
+                            };
+                        }),
+                        filter((event) => event.direction !== ScrollDirection.NONE)
                     )
                     .subscribe(subscriber)
             )
@@ -179,7 +140,7 @@ export class GanttDomService implements OnDestroy {
     getResizeByElement(element: Element) {
         return new Observable((observer) => {
             const resizeObserver = new ResizeObserver(() => {
-                observer.next();
+                observer.next(null);
             });
             resizeObserver.observe(element);
         });
@@ -196,11 +157,62 @@ export class GanttDomService implements OnDestroy {
         }
     }
 
+    syncHorizontalScroll(left: number) {
+        const nextLeft = Math.max(left, 0);
+        this.mainContainer.scrollLeft = nextLeft;
+        this.calendarHeader.scrollLeft = nextLeft;
+        this.calendarOverlay.scrollLeft = nextLeft;
+        this.mainScrollbar && (this.mainScrollbar.scrollLeft = nextLeft);
+        this.mainFooter && (this.mainFooter.scrollLeft = nextLeft);
+        this.setVisibleRangeX();
+    }
+
     setVisibleRangeX() {
         this.visibleRangeX.set({
             min: this.mainContainer.scrollLeft,
             max: this.mainContainer.scrollLeft + this.mainContainer.clientWidth
         });
+    }
+
+    applyCssVariables(element: HTMLElement, options?: GanttStyleOptions) {
+        if (!options) {
+            return;
+        }
+        if (options.headerHeight) {
+            element.style.setProperty('--gantt-header-height', coerceCssPixelValue(options.headerHeight));
+        }
+        if (options.rowHeight) {
+            element.style.setProperty('--gantt-row-height', coerceCssPixelValue(options.rowHeight));
+        }
+        if (options.barHeight) {
+            element.style.setProperty('--gantt-bar-height', coerceCssPixelValue(options.barHeight));
+        }
+
+        const theme = options.themes?.[options.defaultTheme];
+        if (theme) {
+            const themeStyles: Record<string, string> = {
+                '--gantt-color-primary': theme.primary,
+                '--gantt-color-danger': theme.danger,
+                '--gantt-color-highlight': theme.highlight,
+                '--gantt-color-background': theme.background,
+                '--gantt-color-text-main': theme.text?.main,
+                '--gantt-color-text-muted': theme.text?.muted,
+                '--gantt-color-text-light': theme.text?.light,
+                '--gantt-color-text-inverse': theme.text?.inverse,
+                '--gantt-color-gray-100': theme.gray?.[100],
+                '--gantt-color-gray-200': theme.gray?.[200],
+                '--gantt-color-gray-300': theme.gray?.[300],
+                '--gantt-color-gray-400': theme.gray?.[400],
+                '--gantt-color-gray-500': theme.gray?.[500],
+                '--gantt-color-gray-600': theme.gray?.[600]
+            };
+
+            Object.keys(themeStyles).forEach((key) => {
+                if (themeStyles[key]) {
+                    element.style.setProperty(key, themeStyles[key]);
+                }
+            });
+        }
     }
 
     ngOnDestroy() {

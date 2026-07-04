@@ -14,8 +14,9 @@
 </div>
 <div class="gantt-bar-border"></div>
 <div #content class="gantt-bar-content" (click)="onBarClick($event)">
-  @if (item().progress >= 0) {
-    <div class="gantt-bar-content-progress" [style.width.%]="item().progress * 100"></div>
+  <span style="color: #fff">&nbsp;&nbsp;{{ item.origin.title }}</span>
+  @if (item.progress >= 0) {
+    <div class="gantt-bar-content-progress" [style.width.%]="item.progress * 100"></div>
   }
   <ng-template [ngTemplateOutlet]="template()" [ngTemplateOutletContext]="{ item: item().origin, refs: item().refs }"> </ng-template>
 </div>

@@ -5,27 +5,16 @@
       <div
         class="gantt-group"
         [style]="data.laneStyle"
-        [style.height.px]="ganttUpper.styles.lineHeight"
         [ngClass]="data.class"
         [class.gantt-main-item-active]="ganttUpper.isSelected(data.id)"
       >
         <ng-template [ngTemplateOutlet]="groupHeaderTemplate" [ngTemplateOutletContext]="{ group: data }"></ng-template>
-        <div
-          class="gantt-item"
-          [style.height.px]="ganttUpper.styles.lineHeight"
-          [style]="data.laneStyle"
-          [class.gantt-main-item-active]="ganttUpper.isSelected(data.id)"
-        >
+        <div class="gantt-item" [style]="data.laneStyle" [class.gantt-main-item-active]="ganttUpper.isSelected(data.id)">
           @for (item of data.items; track trackBy($index, item)) {
             <gantt-bar [item]="item"></gantt-bar>
           }
 
-          <div
-            class="gantt-item"
-            [style.height.px]="ganttUpper.styles.lineHeight"
-            [style]="data.laneStyle"
-            [class.gantt-main-item-active]="ganttUpper.isSelected(data.id)"
-          >
+          <div class="gantt-item" [style]="data.laneStyle" [class.gantt-main-item-active]="ganttUpper.isSelected(data.id)">
             @for (item of data.items; track trackBy($index, item)) {
               @for (item of item.children; track trackBy($index, item)) {
                 <ngx-gantt-bar [item]="item"></ngx-gantt-bar>

@@ -113,11 +113,7 @@
     "standard-version": "^8.0.1",
     "typescript": "~5.9.3"
   },
-  "commitlint": {
-    "extends": [
-      "@commitlint/config-conventional"
-    ]
-  },
+  
   "lint-staged": {
     "*.{html,scss,js,ts,md}": [
       "prettier --write"

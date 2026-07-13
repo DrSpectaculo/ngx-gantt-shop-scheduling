@@ -11,7 +11,7 @@ on:
   check_suite:
     types:
       - completed
-  status: {}
+  status: 
 
 jobs:
   autoApprove:

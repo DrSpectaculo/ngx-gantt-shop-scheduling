@@ -67,13 +67,14 @@ export class NgxGanttBarComponent extends GanttItemUpper implements OnInit, Afte
         });
         effect(() => {
             const item = this.item();
+            item.title = item.origin.title;
             const previousItem = this.previousItem();
             if (item && previousItem && item !== previousItem) {
                 this.drag.updateItem(item);
                 if (
                     item.refs?.width !== previousItem.refs?.width ||
                     item.color !== previousItem.color ||
-                    item.start?.value !== previousItem.start?.value ||
+                    item.start?.value == previousItem.start?.value ||
                     item.end?.value !== previousItem.end?.value
                 ) {
                     this.setContentBackground();

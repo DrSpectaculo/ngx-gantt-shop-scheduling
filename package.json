@@ -1,14 +1,28 @@
 {
-  "name": "@worktile/gantt",
+  "name": "@Efficiency/gantt",
   "version": "21.0.0",
-  "author": "walkerkay001",
-  "license": "MIT",
-  "description": "A modern and powerful gantt chart component for Angular",
+  "description": "A fork of @worktile/gantt repurposed for specific needs of a machine shop",
   "keywords": [
     "gantt",
     "angular gantt",
     "ngx gantt"
   ],
+  "homepage": "https://github.com/worktile/ngx-gantt#readme",
+  "bugs": {
+    "url": "https://github.com/worktile/ngx-gantt/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DrSpectaculo/ngx-gantt-shop-scheduling.git"
+  },
+  "license": "MIT",
+  "author": "walkerkay001",
+  "type": "commonjs",
+  "main": ".docgenirc.js",
+  "directories": {
+    "doc": "docs",
+    "example": "example"
+  },
   "scripts": {
     "ng": "ng",
     "husky": "husky",
@@ -121,18 +135,5 @@
       "tag": true,
       "commit": true
     }
-  },
-  "main": ".docgenirc.js",
-  "directories": {
-    "doc": "docs",
-    "example": "example"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/worktile/ngx-gantt.git"
-  },
-  "bugs": {
-    "url": "https://github.com/worktile/ngx-gantt/issues"
-  },
-  "homepage": "https://github.com/worktile/ngx-gantt#readme"
+  }
 }

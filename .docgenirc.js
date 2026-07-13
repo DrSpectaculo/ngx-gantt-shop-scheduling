@@ -4,45 +4,15 @@ module.exports = {
     siteProjectName: 'example',
     outputDir: 'dist/site',
     logoUrl: 'assets/imgs/logo.png',
-    repoUrl: 'https://github.com/worktile/ngx-gantt',
-    locales: [
-        { key: 'zh-cn', name: '中文' },
-        { key: 'en-us', name: 'English' }
-    ],
-    defaultLocale: 'zh-cn',
+    locales: [{ key: 'en-us', name: 'English' }],
+    defaultLocale: 'en-us',
     navs: [
-        null,
         {
-            title: '组件 API',
-            path: 'component-apis',
-            lib: 'ngx-gantt',
-            locales: {
-                'en-us': {
-                    title: 'Component APIs'
-                }
-            }
-        },
-        {
-            title: '示例',
+            title: 'Examples',
             path: 'examples',
             locales: {
                 'en-us': {
                     title: 'Examples'
-                }
-            }
-        },
-        {
-            title: 'GitHub',
-            path: 'https://github.com/worktile/ngx-gantt',
-            isExternal: true
-        },
-        {
-            title: '更新日志',
-            path: 'https://github.com/worktile/ngx-gantt/blob/master/CHANGELOG.md',
-            isExternal: true,
-            locales: {
-                'en-us': {
-                    title: 'Changelog'
                 }
             }
         }

@@ -6,6 +6,7 @@ import { random, randomGroupsAndItems, randomItems } from '../helper';
 import { ThyContent, ThyHeader, ThyLayout } from 'ngx-tethys/layout';
 import { ThyButton, ThyButtonGroup } from 'ngx-tethys/button';
 import { DatePipe } from '@angular/common';
+import { ThyInputSearch } from 'ngx-tethys/input';
 @Component({
     selector: 'app-gantt-groups-example',
     templateUrl: './gantt-groups.component.html',
@@ -45,7 +46,7 @@ export class AppGanttGroupsExampleComponent implements OnInit {
         }
     ];
 
-    viewType: GanttViewType = GanttViewType.quarter;
+    viewType: GanttViewType = GanttViewType.day;
 
     items: GanttItem[] = [];
 
@@ -61,37 +62,150 @@ export class AppGanttGroupsExampleComponent implements OnInit {
 
     ngOnInit(): void {
         this.groups = [
-            { id: '000000', title: 'Group-0' },
-            { id: '000001', title: 'Group-1' },
-            { id: '000002', title: 'Group-2' }
+            { id: '000000', title: 'Machine-0' },
+            { id: '000001', title: 'Machine-1' },
+            { id: '000002', title: 'Machine-2' }
         ];
+
         this.items = [
             {
-                id: '000000',
-                title: 'Task 0',
+                id: '00000',
+                title: 'Job 0',
                 group_id: '000000',
                 expanded: true,
+                color: '#4CAF50',
                 children: [
-                    { id: '0-0', title: 'test', start: 1628423200, end: 1629429000 },
-                    { id: '0-1', title: 'test-1', start: 1630423200, end: 1631429000 }
+                    {
+                        id: '00000-00',
+                        title: 'OP - 0',
+                        start: new Date('2026-07-14'),
+                        end: new Date('2026-08-03'),
+                        color: '#4CAF50'
+                    },
+                    {
+                        id: '00000-01',
+                        title: 'OP - 1',
+                        start: new Date('2026-08-05'),
+                        end: new Date('2026-09-12'),
+                        color: '#4CAF50'
+                    }
                 ]
             },
-            { id: '000001', title: 'Task 1', start: 1617361997, end: 1625483597, group_id: '000000' },
             {
-                id: '000002',
-                title: 'Task 2',
-                start: 1628421197,
-                end: 1628421197,
+                id: '00001',
+                title: 'Job 1',
+                group_id: '000000',
+                expanded: true,
+                color: '#2196F3',
+                children: [
+                    {
+                        id: '00001-00',
+                        title: 'OP - 0',
+                        start: new Date('2026-07-02'),
+                        end: new Date('2026-07-28'),
+                        color: '#2196F3'
+                    },
+                    {
+                        id: '00001-01',
+                        title: 'OP - 1',
+                        start: new Date('2026-07-31'),
+                        end: new Date('2026-08-29'),
+                        color: '#2196F3'
+                    }
+                ]
+            },
+            {
+                id: '00002',
+                title: 'Job 2',
                 group_id: '000001',
                 expanded: true,
+                color: '#F44336',
                 children: [
-                    { id: '1-0', title: 'test', start: 1628423200, end: 1629429000 },
-                    { id: '1-1', title: 'test-1', start: 1630423200, end: 1631429000 }
+                    {
+                        id: '00002-00',
+                        title: 'OP - 0',
+                        start: new Date('2026-08-18'),
+                        end: new Date('2026-09-22'),
+                        color: '#F44336'
+                    },
+                    {
+                        id: '00002-01',
+                        title: 'OP - 1',
+                        start: new Date('2026-09-25'),
+                        end: new Date('2026-11-08'),
+                        color: '#F44336'
+                    }
                 ]
             },
-            { id: '000003', title: 'Task 3', start: 1628421197, end: 1628421197, group_id: '000001' },
-            { id: '000004', title: 'Task 4', start: 1628421197, end: 1628421197, group_id: '000002' },
-            { id: '000005', title: 'Task 5', start: 1628421197, end: 1628421197, group_id: '000002' }
+            {
+                id: '00003',
+                title: 'Job 3',
+                group_id: '000001',
+                expanded: true,
+                color: '#FF9800',
+                children: [
+                    {
+                        id: '00003-00',
+                        title: 'OP - 0',
+                        start: new Date('2026-07-20'),
+                        end: new Date('2026-08-18'),
+                        color: '#FF9800'
+                    },
+                    {
+                        id: '00003-01',
+                        title: 'OP - 1',
+                        start: new Date('2026-08-21'),
+                        end: new Date('2026-10-01'),
+                        color: '#FF9800'
+                    }
+                ]
+            },
+            {
+                id: '00004',
+                title: 'Job 4',
+                group_id: '000002',
+                expanded: true,
+                color: '#9C27B0',
+                children: [
+                    {
+                        id: '00004-00',
+                        title: 'OP - 0',
+                        start: new Date('2026-08-08'),
+                        end: new Date('2026-09-14'),
+                        color: '#9C27B0'
+                    },
+                    {
+                        id: '00004-01',
+                        title: 'OP - 1',
+                        start: new Date('2026-09-17'),
+                        end: new Date('2026-10-25'),
+                        color: '#9C27B0'
+                    }
+                ]
+            },
+            {
+                id: '00005',
+                title: 'Job 5',
+                group_id: '000002',
+                expanded: true,
+                color: '#009688',
+                children: [
+                    {
+                        id: '00005-00',
+                        title: 'OP - 0',
+                        start: new Date('2026-07-26'),
+                        end: new Date('2026-08-20'),
+                        color: '#009688'
+                    },
+                    {
+                        id: '00005-01',
+                        title: 'OP - 1',
+                        start: new Date('2026-08-23'),
+                        end: new Date('2026-10-06'),
+                        color: '#009688'
+                    }
+                ]
+            }
         ];
     }
 

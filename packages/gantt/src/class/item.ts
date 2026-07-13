@@ -37,6 +37,7 @@ export interface GanttItem<T = unknown> {
     origin?: T;
     type?: GanttItemType;
     progress?: number;
+    description?: string;
 }
 
 export class GanttItemInternal {
@@ -58,6 +59,7 @@ export class GanttItemInternal {
     children: GanttItemInternal[];
     type?: GanttItemType;
     progress?: number;
+    description: string;
     viewType?: GanttViewType;
     level: number;
 
@@ -100,6 +102,7 @@ export class GanttItemInternal {
         });
         this.type = this.origin.type || GanttItemType.bar;
         this.progress = this.origin.progress;
+        this.description = this.origin.description;
         this.fillDateWhenStartOrEndIsNil(item);
     }
 

@@ -33,7 +33,7 @@ import { NgxGanttPlaceholderComponent } from '../bar/placeholder.component';
 })
 export class GanttMainComponent {
     ganttUpper = inject<GanttUpper>(GANTT_UPPER_TOKEN);
-
+    masterJob: string = 'Master';
     dom = inject(GanttDomService);
 
     protected ngZone = inject(NgZone);

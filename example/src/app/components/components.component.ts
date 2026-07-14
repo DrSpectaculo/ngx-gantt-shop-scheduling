@@ -9,34 +9,10 @@ import { DocItem } from '@docgeni/template';
 export class AppExampleComponentsComponent implements OnInit {
     menus: DocItem[] = [
         {
-            id: 'basic',
-            title: '基本使用',
-            subtitle: 'Basic',
-            path: 'basic'
-        },
-        {
             id: 'groups',
-            title: '分组展示',
+            title: 'Gantt Items',
             subtitle: 'Groups',
             path: 'groups'
-        },
-        {
-            id: 'virtual-scroll',
-            title: '虚拟滚动',
-            subtitle: 'Virtual Scroll',
-            path: 'virtual-scroll'
-        },
-        {
-            id: 'custom-view',
-            title: '自定义视图',
-            subtitle: 'Custom View',
-            path: 'custom-view'
-        },
-        {
-            id: 'advanced',
-            title: '高级使用',
-            subtitle: 'Advanced',
-            path: 'advanced'
         }
     ];
 

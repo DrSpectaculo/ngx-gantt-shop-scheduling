@@ -9,12 +9,15 @@
   @if (!viewportItems()?.length) {
     @if (!emptyTemplate()) {
       <gantt-icon class="empty-icon" iconName="empty"></gantt-icon>
-      <div class="empty-text">没有数据</div>
+      <div class="empty-text">No Data</div>
     }
     <ng-template [ngTemplateOutlet]="emptyTemplate()"></ng-template>
   }
 
   @if (viewportItems() && viewportItems().length > 0) {
+    <div class="gantt-table-group">
+      <span>Overall Jobs</span>
+    </div>
     @for (item of viewportItems(); track trackBy($index, item)) {
       @if (item | isGanttGroup) {
         <div class="gantt-table-group" [ngClass]="item.class">
@@ -26,7 +29,7 @@
                 [ngTemplateOutletContext]="{ $implicit: item.origin, group: item.origin }"
               ></ng-template>
             } @else {
-              <span class="group-title">{{ item.title }}</span>
+              <span class="group-title">{{ item.title }} </span>
             }
           </div>
         </div>
